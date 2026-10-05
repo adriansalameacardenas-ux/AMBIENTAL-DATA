@@ -1,0 +1,40 @@
+name: Actualizar datos CPS
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # cada 30 minutos (los horarios en Actions pueden tardar unos min)
+  workflow_dispatch:          # permite ejecutarlo a mano desde la pestaña Actions
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: pip install requests
+
+      - name: Descargar datos del portal
+        env:
+          CPS_USER: ${{ secrets.CPS_USER }}
+          CPS_PASS: ${{ secrets.CPS_PASS }}
+          # Opcionales: si la autodetección no funciona, crea estos secrets con las rutas reales
+          # CPS_LOGIN: ${{ secrets.CPS_LOGIN }}
+          # CPS_PLANTS: ${{ secrets.CPS_PLANTS }}
+          # CPS_DEVICES: ${{ secrets.CPS_DEVICES }}
+        run: python fetch_cps.py
+
+      - name: Guardar data.json en el repo
+        run: |
+          git config user.name "cps-bot"
+          git config user.email "cps-bot@users.noreply.github.com"
+          git add data.json
+          git commit -m "data: actualización $(date -u +'%Y-%m-%d %H:%M UTC')" || echo "sin cambios"
+          git push

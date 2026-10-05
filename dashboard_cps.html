@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard Solar CPS</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0e14; color: #e6edf3; min-height: 100vh; }
+  header { background: linear-gradient(120deg, #0d3b2e 0%, #14532d 45%, #1a2f1a 100%); padding: 26px 24px; border-bottom: 2px solid #2ea043; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+  header h1 { font-size: 1.45rem; }
+  header .sub { color: #9fe6b8; font-size: .82rem; margin-top: 4px; }
+  .live { display: flex; align-items: center; gap: 8px; background: #052e16; border: 1px solid #2ea043; padding: 8px 16px; border-radius: 30px; font-size: .85rem; color: #86efac; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #4ade80; animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 #4ade8066; } 50% { box-shadow: 0 0 0 7px #4ade8000; } }
+  main { max-width: 1300px; margin: 22px auto; padding: 0 16px; display: grid; gap: 18px; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); gap: 14px; }
+  .kpi { background: linear-gradient(160deg, #111827, #0d1117); border: 1px solid #1f2937; border-radius: 14px; padding: 16px 18px; position: relative; overflow: hidden; }
+  .kpi::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--c, #2ea043); }
+  .kpi .lbl { font-size: .72rem; color: #8b949e; text-transform: uppercase; letter-spacing: .6px; }
+  .kpi .val { font-size: 1.7rem; font-weight: 700; margin-top: 6px; color: var(--c, #fff); }
+  .kpi .unit { font-size: .8rem; color: #6b7280; font-weight: 400; }
+  .kpi .ico { position: absolute; right: 12px; top: 12px; font-size: 1.3rem; opacity: .5; }
+  .panel { background: #0d1117; border: 1px solid #1f2937; border-radius: 14px; padding: 18px; }
+  .panel h2 { font-size: .95rem; color: #86efac; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; }
+  .chart-box { position: relative; height: 280px; }
+  table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+  th, td { border-bottom: 1px solid #1f2937; padding: 7px 10px; text-align: left; white-space: nowrap; }
+  th { color: #58d68d; font-weight: 600; }
+  tr:hover td { background: #111827; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: .72rem; font-weight: 600; }
+  .on { background: #052e16; color: #4ade80; border: 1px solid #166534; }
+  .off { background: #450a0a; color: #f87171; border: 1px solid #7f1d1d; }
+  .warn { background: #422006; color: #fbbf24; border: 1px solid #92400e; }
+  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  button { cursor: pointer; border: none; border-radius: 8px; padding: 10px 18px; font-size: .88rem; font-weight: 600; transition: .15s; }
+  .btn-g { background: #2ea043; color: #fff; } .btn-g:hover { background: #3fb950; }
+  .btn-b { background: #1f6feb; color: #fff; } .btn-b:hover { background: #388bfd; }
+  .btn-o { background: #b45309; color: #fff; } .btn-o:hover { background: #d97706; }
+  .btn-gr { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; } .btn-gr:hover { background: #30363d; }
+  textarea { width: 100%; background: #0a0e14; border: 1px solid #30363d; border-radius: 8px; color: #e6edf3; padding: 10px; font-family: Consolas, monospace; font-size: .78rem; min-height: 90px; resize: vertical; }
+  .drop { border: 2px dashed #2ea04366; border-radius: 12px; padding: 22px; text-align: center; color: #8b949e; font-size: .85rem; cursor: pointer; transition: .2s; }
+  .drop:hover, .drop.over { border-color: #2ea043; background: #052e1622; color: #86efac; }
+  #log { max-height: 130px; overflow-y: auto; font-family: Consolas, monospace; font-size: .75rem; background: #0a0e14; border: 1px solid #1f2937; border-radius: 8px; padding: 10px; }
+  .ok { color: #4ade80; } .err { color: #f87171; } .info { color: #58a6ff; } .wrn { color: #fbbf24; }
+  footer { text-align: center; color: #374151; font-size: .75rem; padding: 18px; }
+  .num-badge { background: #2ea043; color: #fff; border-radius: 6px; padding: 1px 8px; font-size: .75rem; }
+  details summary { cursor: pointer; color: #58a6ff; font-size: .85rem; }
+  @media (max-width: 900px) { .charts { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>☀️ Dashboard Solar <span style="color:#4ade80">CPS</span></h1>
+    <div class="sub" id="plantName">Planta · monitor.chintpowersystems.com</div>
+  </div>
+  <div class="live"><span class="dot"></span><span id="clock">--:--</span><span id="upd">sin datos aún</span></div>
+</header>
+
+<main>
+
+  <!-- KPIs -->
+  <section class="kpis">
+    <div class="kpi" style="--c:#4ade80"><span class="ico">⚡</span><div class="lbl">Potencia actual</div><div class="val" id="kPower">—</div><div class="unit">kW</div></div>
+    <div class="kpi" style="--c:#fbbf24"><span class="ico">🔆</span><div class="lbl">Energía hoy</div><div class="val" id="kToday">—</div><div class="unit">kWh</div></div>
+    <div class="kpi" style="--c:#38bdf8"><span class="ico">📈</span><div class="lbl">Energía total</div><div class="val" id="kTotal">—</div><div class="unit">MWh</div></div>
+    <div class="kpi" style="--c:#a78bfa"><span class="ico">🌿</span><div class="lbl">CO₂ evitado</div><div class="val" id="kCO2">—</div><div class="unit">toneladas</div></div>
+    <div class="kpi" style="--c:#34d399"><span class="ico">🌳</span><div class="lbl">Árboles equivalentes</div><div class="val" id="kTrees">—</div><div class="unit">árboles/año</div></div>
+    <div class="kpi" style="--c:#f472b6"><span class="ico">🏭</span><div class="lbl">Inversores</div><div class="val" id="kInv">—</div><div class="unit" id="kInvSub">en línea</div></div>
+  </section>
+
+  <!-- GRÁFICOS -->
+  <section class="charts">
+    <div class="panel"><h2>📉 Potencia del día <span class="num-badge" id="pwSrc">demo</span></h2><div class="chart-box"><canvas id="chPower"></canvas></div></div>
+    <div class="panel"><h2>📊 Energía diaria <span class="num-badge" id="edSrc">demo</span></h2><div class="chart-box"><canvas id="chDay"></canvas></div></div>
+    <div class="panel"><h2>📅 Energía mensual <span class="num-badge" id="emSrc">demo</span></h2><div class="chart-box"><canvas id="chMonth"></canvas></div></div>
+    <div class="panel"><h2>🔌 Energía por inversor <span class="num-badge" id="eiSrc">demo</span></h2><div class="chart-box"><canvas id="chInv"></canvas></div></div>
+  </section>
+
+  <!-- TABLA INVERSORES -->
+  <section class="panel">
+    <h2>🔧 Inversores / dispositivos</h2>
+    <div style="overflow-x:auto"><table id="tblDevices"></table></div>
+  </section>
+
+  <!-- DATOS -->
+  <section class="panel">
+    <h2>📥 Cargar datos del portal (sin CORS: por archivo o pegado)</h2>
+    <div class="toolbar" style="margin-bottom:12px">
+      <button class="btn-g" onclick="document.getElementById('fileHar').click()">📂 Subir .har / .json</button>
+      <input type="file" id="fileHar" accept=".har,.json,.txt" multiple style="display:none" onchange="manejarArchivos(this.files)">
+      <button class="btn-b" onclick="procesarTexto(true)">⚙️ Procesar JSON pegado</button>
+      <button class="btn-o" onclick="descargarExcel()">⬇️ Exportar Excel</button>
+      <button class="btn-gr" onclick="cargarDataJson()">🔄 Recargar datos</button>
+      <button class="btn-gr" onclick="cargarDemo()">🎲 Datos demo</button>
+      <button class="btn-gr" onclick="limpiar()">🗑️ Limpiar</button>
+    </div>
+    <div class="drop" id="drop" onclick="document.getElementById('fileHar').click()">
+      Arrastra aquí el archivo <b>.har</b> (F12 → Network → clic derecho → Save all as HAR)<br>
+      o los <b>.json</b> copiados de las peticiones del portal
+    </div>
+    <details style="margin-top:10px">
+      <summary>Pegar JSON manualmente (uno o varios separados por línea en blanco)</summary>
+      <textarea id="taData" style="margin-top:8px" placeholder='{"data":{...}}'></textarea>
+    </details>
+    <div id="log" style="margin-top:12px"><div class="info">💡 Tip: abre el portal → F12 → Network → Fetch/XHR → actualiza → clic derecho → “Save all as HAR with content”. Ese único archivo trae TODO el dashboard.</div></div>
+  </section>
+
+</main>
+<footer>Dashboard local · tus datos no salen del navegador · Chart.js + SheetJS</footer>
+
+<script>
+/* ======================== ESTADO ======================== */
+const DS = {};            // nombre -> filas planas [{...}]
+let CH = {};              // charts activos
+const $ = id => document.getElementById(id);
+const CO2_FACTOR = 0.5;   // kg CO2 por kWh
+const TREE_YEAR  = 21;    // kg CO2 absorbido por árbol/año
+
+/* ======================== UTILIDADES ======================== */
+function log(m, c='info') {
+  $('log').innerHTML += `<div class="${c}">[${new Date().toLocaleTimeString()}] ${m}</div>`;
+  $('log').scrollTop = 1e9;
+}
+function aplanar(o, p='', out={}) {
+  if (o == null) return out;
+  if (typeof o !== 'object') { out[p] = o; return out; }
+  if (Array.isArray(o)) { out[p] = JSON.stringify(o); return out; }
+  for (const k of Object.keys(o)) aplanar(o[k], p ? p + '.' + k : k, out);
+  return out;
+}
+function extraerListas(o, ruta='', out=[]) {
+  if (Array.isArray(o) && o.length && o.every(x => x && typeof x === 'object')) {
+    out.push({ ruta: ruta || 'raíz', filas: o.map(x => aplanar(x)) });
+    return out;
+  }
+  if (o && typeof o === 'object' && !Array.isArray(o)) {
+    for (const k of Object.keys(o)) {
+      if (['data','result','list','rows','records','items','plants','devices','datas','points'].includes(k) || Array.isArray(o[k]))
+        extraerListas(o[k], ruta ? ruta + '.' + k : k, out);
+    }
+  }
+  return out;
+}
+function extraerEscalares(o, p='', out={}) {
+  if (o == null) return out;
+  if (typeof o !== 'object') {
+    if (p && typeof o === 'number') out[p] = o;
+    return out;
+  }
+  if (Array.isArray(o)) { o.forEach((v,i)=>extraerEscalares(v, `${p}[${i}]`, out)); return out; }
+  for (const k of Object.keys(o)) extraerEscalares(o[k], p ? p + '.' + k : k, out);
+  return out;
+}
+function cols(filas) { const s = new Set(); filas.forEach(f => Object.keys(f).forEach(k => s.add(k))); return [...s]; }
+function colMatch(cs, re) { return cs.find(c => re.test(c)); }
+function num(v) { const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? null : n; }
+function fechaOK(v) { const t = Date.parse(v); return !isNaN(t) ? t : (typeof v === 'number' && v > 1e9 ? v : null); }
+function fFecha(t, modo) {
+  const d = new Date(t);
+  if (modo === 'hora') return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  if (modo === 'mes') return d.toLocaleDateString([], {month:'short', year:'2-digit'});
+  return d.toLocaleDateString();
+}
+
+/* ======================== CARGA DE DATOS ======================== */
+function agregarDataset(nombre, json) {
+  const listas = extraerListas(json);
+  const escalares = extraerEscalares(json);
+  let agregadas = 0;
+  listas.forEach((L, i) => {
+    if (!L.filas.length) return;
+    const n = listas.length > 1 ? `${nombre}·${L.ruta.split('.').pop()}_${i}` : nombre;
+    DS[n] = L.filas; agregadas++;
+    log(`📦 "${n}": ${L.filas.length} filas (${L.ruta})`, 'ok');
+  });
+  if (!listas.length && Object.keys(escalares).length) {
+    DS[nombre] = [escalares]; agregadas++;
+    log(`📦 "${nombre}": objeto con ${Object.keys(escalares).length} valores numéricos`, 'ok');
+  }
+  if (agregadas) { $('upd').textContent = 'actualizado ' + new Date().toLocaleTimeString(); analizarTodo(); }
+  return agregadas;
+}
+function manejarArchivos(files) {
+  [...files].forEach(f => {
+    const rd = new FileReader();
+    rd.onload = () => {
+      try {
+        const j = JSON.parse(rd.result);
+        if (f.name.endsWith('.har') && j.log && j.log.entries) {
+          let n = 0;
+          j.log.entries.forEach(e => {
+            try {
+              const txt = e.response && e.response.content && e.response.content.text;
+              if (!txt) return;
+              const data = JSON.parse(txt);
+              const nom = e.request.url.split('/').filter(Boolean).slice(-2).join('_').slice(0,40) || 'har';
+              n += agregarDataset('har_' + nom, data);
+            } catch(_) {}
+          });
+          log(`📂 HAR "${f.name}": ${n} dataset(s) extraído(s)`, n ? 'ok' : 'wrn');
+        } else {
+          agregarDataset(f.name.replace(/\.\w+$/, ''), j);
+        }
+      } catch(e) { log(`❌ ${f.name}: no es JSON válido (${e.message})`, 'err'); }
+    };
+    rd.readAsText(f);
+  });
+}
+function procesarTexto(refrescar) {
+  const t = $('taData').value.trim();
+  if (!t) { log('⚠️ Pega primero uno o varios JSON.', 'wrn'); return; }
+  t.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean).forEach((b, i) => {
+    try { agregarDataset('pegado_' + (i + 1), JSON.parse(b)); }
+    catch(e) { log(`❌ Bloque ${i+1} inválido: ${e.message}`, 'err'); }
+  });
+  if (refrescar) analizarTodo();
+}
+function cargarDemo() {
+  limpiar(true);
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const pot = [], eDia = [], eMes = [], devs = [];
+  for (let h = 0; h <= 23; h += 1) {
+    const p = Math.max(0, Math.round(48 * Math.sin((h - 6) / 12 * Math.PI) * (0.9 + Math.random() * .2) * 10) / 10);
+    pot.push({ 'hora': fFecha(new Date(hoy.getTime() + h*3600e3), 'hora'), 'potencia_kW': p });
+  }
+  for (let d = 29; d >= 0; d--) {
+    const f = new Date(hoy.getTime() - d * 86400e3);
+    eDia.push({ 'fecha': fFecha(f), 'energia_kWh': Math.round((280 + 120 * Math.sin((29-d)/29*Math.PI) + Math.random()*40) * 10) / 10 });
+  }
+  for (let m = 11; m >= 0; m--) {
+    const f = new Date(hoy.getFullYear(), hoy.getMonth() - m, 1);
+    eMes.push({ 'mes': fFecha(f, 'mes'), 'energia_kWh': Math.round((6500 + 3500 * Math.sin((11-m)/11*Math.PI) + Math.random()*500)) });
+  }
+  for (let i = 1; i <= 6; i++) devs.push({
+    'sn': 'CPS-INV-' + String(1000 + i), 'modelo': 'CPS SCA25KTL', 'potencia_kW': 25,
+    'energia_hoy_kWh': Math.round((120 + Math.random()*40)*10)/10, 'estado': i === 5 ? 'alarma' : 'online',
+    'temperatura_°C': Math.round((38 + Math.random()*14)*10)/10, 'eficiencia_%': Math.round((97 + Math.random()*2)*100)/100
+  });
+  DS['demo_potencia'] = pot; DS['demo_energia_dia'] = eDia; DS['demo_energia_mes'] = eMes; DS['demo_inversores'] = devs;
+  log('🎲 Datos de demostración cargados.', 'ok');
+  analizarTodo();
+}
+function limpiar(silencio) {
+  Object.keys(DS).forEach(k => delete DS[k]);
+  Object.values(CH).forEach(c => c.destroy()); CH = {};
+  ['pwSrc','edSrc','emSrc','eiSrc'].forEach(i => $(i).textContent = '—');
+  if (!silencio) log('🗑️ Datos limpiados.');
+}
+
+/* ======================== ANÁLISIS / RENDER ======================== */
+const chartBase = { responsive: true, maintainAspectRatio: false,
+  plugins: { legend: { labels: { color: '#8b949e', boxWidth: 12 } } },
+  scales: { x: { ticks: { color: '#6b7280', maxTicksLimit: 12 }, grid: { color: '#1f293733' } },
+            y: { ticks: { color: '#6b7280' }, grid: { color: '#1f293722' } } } };
+function mkChart(id, cfg) { if (CH[id]) CH[id].destroy(); CH[id] = new Chart($(id), cfg); }
+
+function analizarTodo() {
+  // ---------- KPIs ----------
+  const esc = {};
+  Object.values(DS).forEach(filas => filas.forEach(f => Object.assign(esc, f)));
+  const cs = Object.keys(esc);
+  const vPower = num(esc[colMatch(cs, /(^|\.)(power|pac|p_ac|active_power)/i) ?? '']);
+  const vToday = num(esc[colMatch(cs, /(etoday|e_today|today.*energ|energ.*today)/i) ?? '']);
+  const vTotal = num(esc[colMatch(cs, /(etotal|e_total|total.*energ|energ.*total|cumul)/i) ?? '']);
+  if (vPower != null) $('kPower').textContent = vPower.toLocaleString();
+  if (vToday != null) $('kToday').textContent = vToday.toLocaleString();
+  if (vTotal != null) $('kTotal').textContent = (vTotal / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 });
+  const baseCO2 = vTotal ?? vToday;
+  if (baseCO2 != null) {
+    $('kCO2').textContent = (baseCO2 * CO2_FACTOR / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 });
+    $('kTrees').textContent = Math.round(baseCO2 * CO2_FACTOR / TREE_YEAR).toLocaleString();
+  }
+
+  // ---------- Inversores ----------
+  let inv = null;
+  for (const [n, f] of Object.entries(DS)) {
+    const c = cols(f);
+    if (colMatch(c, /sn|serial/i) && f.length >= 2) { inv = { n, f, c }; break; }
+  }
+  if (inv) {
+    const est = colMatch(inv.c, /status|state|estado|online|fault/i);
+    const on = est ? inv.f.filter(r => /on|normal|ok|1|true/i.test(String(r[est]))).length : inv.f.length;
+    $('kInv').textContent = `${on}/${inv.f.length}`;
+    renderTabla(inv.f, inv.c);
+    // doughnut energía por inversor
+    const eC = colMatch(inv.c, /energ|etoday|today|kwh/i);
+    if (eC) {
+      mkChart('chInv', { type: 'doughnut',
+        data: { labels: inv.f.map(r => String(r[colMatch(inv.c, /sn|serial|name|id/i)] ?? '?')),
+          datasets: [{ data: inv.f.map(r => num(r[eC]) ?? 0),
+            backgroundColor: ['#4ade80','#38bdf8','#fbbf24','#a78bfa','#f472b6','#34d399','#fb923c','#60a5fa'] }] },
+        options: { ...chartBase, cutout: '62%', scales: {} } });
+      $('eiSrc').textContent = inv.n;
+    }
+  }
+
+  // ---------- Potencia (línea) ----------
+  for (const [n, f] of Object.entries(DS)) {
+    const c = cols(f), tC = colMatch(c, /time|fecha|date|hora|timestamp/i), pC = colMatch(c, /power|pac|potencia/i);
+    if (tC && pC && f.length >= 4) {
+      const pts = f.map(r => ({ t: fechaOK(r[tC]), v: num(r[pC]) })).filter(p => p.t && p.v != null).sort((a,b)=>a.t-b.t);
+      if (pts.length >= 4) {
+        mkChart('chPower', { type: 'line',
+          data: { labels: pts.map(p => fFecha(p.t, pts.length > 25 ? 'hora' : undefined)),
+            datasets: [{ label: 'Potencia (kW)', data: pts.map(p => p.v), borderColor: '#4ade80',
+              backgroundColor: '#4ade8022', fill: true, tension: .35, pointRadius: 0, borderWidth: 2 }] },
+          options: chartBase });
+        $('pwSrc').textContent = n; break;
+      }
+    }
+  }
+
+  // ---------- Energía por día / mes (barras) ----------
+  for (const [n, f] of Object.entries(DS)) {
+    const c = cols(f), tC = colMatch(c, /time|fecha|date|day/i), eC = colMatch(c, /energ|kwh|etoday|eday/i);
+    if (tC && eC && f.length >= 3) {
+      const porDia = {};
+      f.forEach(r => { const t = fechaOK(r[tC]); if (!t) return; const k = fFecha(t); porDia[k] = (porDia[k] ?? 0) + (num(r[eC]) ?? 0); });
+      const keys = Object.keys(porDia);
+      if (keys.length >= 3 && keys.length <= 45) {
+        mkChart('chDay', { type: 'bar',
+          data: { labels: keys, datasets: [{ label: 'kWh', data: keys.map(k => Math.round(porDia[k]*10)/10),
+            backgroundColor: '#fbbf24cc', borderRadius: 5 }] }, options: chartBase });
+        $('edSrc').textContent = n;
+      } else if (keys.length > 45) {
+        const porMes = {};
+        f.forEach(r => { const t = fechaOK(r[tC]); if (!t) return; const k = fFecha(t, 'mes'); porMes[k] = (porMes[k] ?? 0) + (num(r[eC]) ?? 0); });
+        const mk = Object.keys(porMes);
+        if (mk.length >= 3 && mk.length <= 18) {
+          mkChart('chMonth', { type: 'bar',
+            data: { labels: mk, datasets: [{ label: 'kWh', data: mk.map(k => Math.round(porMes[k])), backgroundColor: '#38bdf8cc', borderRadius: 5 }] },
+            options: chartBase });
+          $('emSrc').textContent = n;
+        }
+      }
+    }
+  }
+  // dataset ya mensual (pocas filas con mes)
+  if ($('emSrc').textContent === '—' || $('emSrc').textContent === 'demo') {
+    for (const [n, f] of Object.entries(DS)) {
+      const c = cols(f), mC = colMatch(c, /month|mes/i), eC = colMatch(c, /energ|kwh/i);
+      if (mC && eC && f.length >= 3 && f.length <= 18) {
+        mkChart('chMonth', { type: 'bar',
+          data: { labels: f.map(r => String(r[mC])), datasets: [{ label: 'kWh', data: f.map(r => num(r[eC]) ?? 0),
+            backgroundColor: '#38bdf8cc', borderRadius: 5 }] }, options: chartBase });
+        $('emSrc').textContent = n; break;
+      }
+    }
+  }
+
+  // nombre de planta
+  for (const f of Object.values(DS)) {
+    const c = cols(f), pC = colMatch(c, /plant.*name|station.*name|plantname/i);
+    if (pC && f[0] && f[0][pC]) { $('plantName').textContent = String(f[0][pC]) + ' · CPS'; break; }
+  }
+}
+function renderTabla(filas, cs) {
+  const keep = cs.filter(c => !/password|token|secret/i.test(c)).slice(0, 9);
+  let h = '<thead><tr>' + keep.map(c => `<th>${c}</th>`).join('') + '</tr></thead><tbody>';
+  filas.slice(0, 30).forEach(r => {
+    h += '<tr>' + keep.map(c => {
+      let v = String(r[c] ?? '');
+      if (/status|state|estado|online|fault/i.test(c))
+        v = /alar|fault|warn/i.test(v) ? '<span class="pill warn">' + v + '</span>'
+          : /off|0|false|error/i.test(v) ? '<span class="pill off">' + v + '</span>'
+          : '<span class="pill on">' + (v || 'online') + '</span>';
+      return `<td>${v}</td>`;
+    }).join('') + '</tr>';
+  });
+  $('tblDevices').innerHTML = h + '</tbody>';
+}
+
+/* ======================== EXCEL ======================== */
+function descargarExcel() {
+  const nombres = Object.keys(DS);
+  if (!nombres.length) { log('⚠️ No hay datos para exportar.', 'wrn'); return; }
+  const wb = XLSX.utils.book_new();
+  nombres.forEach(n => {
+    const c = cols(DS[n]);
+    const aoa = [c, ...DS[n].map(r => c.map(k => r[k] ?? ''))];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = c.map(k => ({ wch: Math.min(Math.max(k.length + 2, 12), 40) }));
+    XLSX.utils.book_append_sheet(wb, ws, n.replace(/[^\w]/g, '_').slice(0, 31));
+  });
+  XLSX.writeFile(wb, 'dashboard_cps.xlsx');
+  log('⬇️ Excel descargado: dashboard_cps.xlsx', 'ok');
+}
+
+/* ======================== ARRANQUE ======================== */
+/* ======================== AUTO-CARGA ======================== */
+async function cargarDataJson() {
+  try {
+    const r = await fetch('data.json', { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    limpiar(true);
+    d.sources.forEach(s => agregarDataset(s.name, s.json));
+    log('🔄 Datos cargados desde data.json (fetched_at: ' + d.fetched_at + ')', 'ok');
+  } catch(e) {
+    log('⚠️ No hay data.json accesible (' + e.message + '). Mostrando demo.', 'wrn');
+    cargarDemo();
+  }
+}
+setInterval(() => { $('clock').textContent = new Date().toLocaleTimeString(); }, 1000);
+const drop = $('drop');
+['dragover','dragenter'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => manejarArchivos(e.dataTransfer.files));
+cargarDataJson(); // GitHub Pages: data.json de la Action; local: fallback a demo
+</script>
+</body>
+</html>
